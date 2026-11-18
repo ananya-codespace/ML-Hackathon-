@@ -12,9 +12,9 @@ from . import config as C
 def _read_table(stem: str) -> pd.DataFrame:
     pq, csv = C.FEATURE_DIR / f"{stem}.parquet", C.FEATURE_DIR / f"{stem}.csv"
     if pq.exists():
-        return pd.read_parquet(pq)
+        return pd.read_parquet(pq).astype({"trip_id": str})
     if csv.exists():
-        return pd.read_csv(csv)
+        return pd.read_csv(csv, dtype={"trip_id": str})   # keep ids like '00000001' (leading zeros)
     raise FileNotFoundError(
         f"Feature table '{stem}' not found in {C.FEATURE_DIR} (looked for .parquet and .csv). "
         "Person A must export it - see README_B.md, section 'Input contract'."
