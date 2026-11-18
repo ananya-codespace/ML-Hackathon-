@@ -52,6 +52,8 @@ def prepare_b(data: Path, part: str, probs_dir: str):
     Labels come from the same table (label column), so Top-1 matches B's numbers."""
     df = pd.read_csv(Path(probs_dir) / B_FILES[part], dtype={"trip_id": str})
     df["trip_id"] = df["trip_id"].str.zfill(8)
+    if "label" not in df and "y" in df:  # A's feature table names the target `y`
+        df = df.rename(columns={"y": "label"})
     prepared = []
     for tid, g in df.groupby("trip_id", sort=True):
         trip = load_trip(data / part / tid)
