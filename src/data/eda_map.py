@@ -11,7 +11,7 @@ d = load_trip(PART, TRIP)
 crs = crs_for_track(d["track"])
 net = RoadNetwork(d["nodes"], d["arcs"], crs)
 p = to_xy(d["track"].lon, d["track"].lat, crs)
-near = np.unique(net.candidates(p, radius=300)["arc_id"].values)   # arcs near the track only
+near = np.unique(net.candidates(p, radius=60)["arc_id"].values)   # arcs near the track only
 route = d["route"].to_numpy()
 
 # ---- static figure (metres)
@@ -28,8 +28,8 @@ plt.tight_layout(); plt.savefig(FIG / f"trip_{TRIP}_{PART}.png", dpi=150)
 # ---- Folium map
 nodes = d["nodes"][["lat", "lon"]].to_numpy(); arcs = d["arcs"].to_numpy()
 tr = d["track"]
-m = folium.Map(location=[tr.lat.mean(), tr.lon.mean()], zoom_start=14, tiles="OpenStreetMap")
-g_net = folium.FeatureGroup(name="Road network (within 300 m)"); g_rt = folium.FeatureGroup(name="Reference route")
+m = folium.Map(location=[tr.lat.mean(), tr.lon.mean()], zoom_start=14, tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", attr="Esri World Street Map")
+g_net = folium.FeatureGroup(name="Road network (within 60 m)"); g_rt = folium.FeatureGroup(name="Reference route")
 g_gps = folium.FeatureGroup(name="GPS points")
 for a in near:
     folium.PolyLine(nodes[arcs[a]], color="gray", weight=2, opacity=0.6).add_to(g_net)
