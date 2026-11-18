@@ -12,6 +12,16 @@ python -m src.viz_folium.maps --trip data/student_test/00000052   # map -> resul
 
 `data/train` and `data/student_test` are the unzipped trip folders (git-ignored).
 
+When Person B's probability files exist (`results/final_model_probs_train_oof.csv` and `results/final_model_probs_student_test.csv`), decode with the real model instead of the stand-in:
+
+```bash
+python -m src.hmm_viterbi.experiment --probs-source b    # results -> results/hmm_bmodel/
+```
+
+The decoder is tuned on B's out-of-fold train probabilities only. Labels come from the `label` column of B's table, so Top-1 matches B's numbers. This also rewrites `artifacts/hmm_config.json`, which the API should use.
+
+`route_continuity` also accepts B's call form, `route_continuity(pred_df, "student_test")`.
+
 ## Interface for the other roles
 
 ```python

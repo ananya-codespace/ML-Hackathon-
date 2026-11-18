@@ -1,16 +1,30 @@
 """Route-level metrics shared by the model comparison (B) and the decoder (C)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
 from .network import RoadNetwork
 
 
-def route_continuity(pred: np.ndarray, net: RoadNetwork) -> float:
+DATA_ROOT = Path(__file__).resolve().parents[2] / "data"
+
+
+def route_continuity(pred, net) -> float:
     """Share of consecutive GPS points whose predicted arcs are drivable in
     sequence: the same arc, or the second starts where the first ends.
-    Points predicted as -1 (no prediction) are dropped first."""
+    Points predicted as -1 (no prediction) are dropped first.
+
+    Two call forms:
+      route_continuity(pred_arcs, net)    one trip; pred_arcs ordered by GPS point
+      route_continuity(pred_df, split)    Person B's form; pred_df has trip_id,
+                                          obs_idx, arc_id; split is 'train' or
+                                          'student_test'. Pooled over all pairs.
+    """
+    if isinstance(pred, pd.DataFrame):
+        return _pooled_continuity(pred, DATA_ROOT / str(net))
     pred = np.asarray(pred)
     pred = pred[pred >= 0]
     if len(pred) < 2:
@@ -18,6 +32,21 @@ def route_continuity(pred: np.ndarray, net: RoadNetwork) -> float:
     a, b = pred[:-1], pred[1:]
     ok = (a == b) | (net.dst[a] == net.src[b])
     return float(ok.mean())
+
+
+def _pooled_continuity(pred_df: pd.DataFrame, split_dir: Path) -> float:
+    ok = total = 0
+    for tid, g in pred_df.sort_values(["trip_id", "obs_idx"]).groupby("trip_id"):
+        tid = str(tid).zfill(8)
+        arcs = np.loadtxt(split_dir / tid / f"{tid}.arcs", dtype=np.int64, ndmin=2)
+        a = g["arc_id"].to_numpy(dtype=np.int64)
+        a = a[a >= 0]
+        if len(a) < 2:
+            continue
+        x, y = a[:-1], a[1:]
+        ok += int(((x == y) | (arcs[x, 1] == arcs[y, 0])).sum())
+        total += len(x)
+    return ok / total if total else float("nan")
 
 
 def transition_continuity(pred: np.ndarray, net: RoadNetwork) -> float:

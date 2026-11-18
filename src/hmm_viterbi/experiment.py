@@ -7,9 +7,12 @@ Usage (from the repo root):
 2. Freeze the best config into artifacts/hmm_config.json.
 3. Report per-trip and overall metrics on train and student_test.
 
-Until Person B's model is available the "classifier" is the distance-only
-stand-in from candidates.distance_probs (argmax = nearest arc). Swap in the real
-predict_proba output via `probs_fn` and rerun; nothing else changes.
+--probs-source stub (default): the "classifier" is the distance-only stand-in
+    from candidates.distance_probs (argmax = nearest arc).
+--probs-source b: read Person B's results/final_model_probs_train_oof.csv and
+    final_model_probs_student_test.csv (trip_id, obs_idx, arc_id, label, prob);
+    outputs go to results/hmm_bmodel/ and artifacts/hmm_config.json is replaced
+    by the config tuned on B's out-of-fold probabilities.
 """
 from __future__ import annotations
 
@@ -38,6 +41,27 @@ def prepare(trip_dir: Path):
     labels, _ = reference_labels(trip, net)
     cands = build_candidates(trip, net, k=K, radius=RADIUS)
     return trip, net, labels, cands
+
+
+B_FILES = {"train": "final_model_probs_train_oof.csv",
+           "student_test": "final_model_probs_student_test.csv"}
+
+
+def prepare_b(data: Path, part: str, probs_dir: str):
+    """Use Person B's probabilities (train = out-of-fold, so tuning stays leak-free).
+    Labels come from the same table (label column), so Top-1 matches B's numbers."""
+    df = pd.read_csv(Path(probs_dir) / B_FILES[part], dtype={"trip_id": str})
+    df["trip_id"] = df["trip_id"].str.zfill(8)
+    prepared = []
+    for tid, g in df.groupby("trip_id", sort=True):
+        trip = load_trip(data / part / tid)
+        net = RoadNetwork.from_trip(trip)
+        labels = np.full(len(trip.track_xy), -1, dtype=np.int64)
+        pos = g[g["label"] == 1]
+        labels[pos["obs_idx"].to_numpy()] = pos["arc_id"].to_numpy()
+        cands = g[["trip_id", "obs_idx", "arc_id"]].reset_index(drop=True)
+        prepared.append((trip, net, labels, cands, g["prob"].to_numpy(dtype=float)))
+    return prepared
 
 
 def evaluate(trip, net, labels, cands, probs, params):
@@ -85,34 +109,41 @@ def main():
     ap.add_argument("--betas", default="2,5,10,20,50")
     ap.add_argument("--sigmas", default="5,10")
     ap.add_argument("--tols", default="5,15,30,60")
+    ap.add_argument("--probs-source", choices=["stub", "b"], default="stub",
+                    help="stub: distance stand-in; b: Person B's probability CSVs")
+    ap.add_argument("--b-probs-dir", default="results")
     args = ap.parse_args()
     data, out, art = Path(args.data), Path(args.out), Path(args.artifacts)
     out.mkdir(parents=True, exist_ok=True)
     art.mkdir(parents=True, exist_ok=True)
 
+    b_mode = args.probs_source == "b"
+    if b_mode:
+        out = out / "hmm_bmodel"
+        out.mkdir(parents=True, exist_ok=True)
     parts = {}
     for part in ["train", "student_test"]:
-        prepared = []
-        miss = []
-        for d in sorted(p for p in (data / part).iterdir() if p.is_dir()):
-            trip, net, labels, cands = prepare(d)
-            prepared.append((trip, net, labels, cands))
-            miss.append({"trip_id": trip.trip_id, "partition": part, "n_points": len(labels),
-                         "candidate_miss_rate": candidate_miss_rate(cands, labels)})
+        prepared = prepare_b(data, part, args.b_probs_dir) if b_mode else [
+            prepare(d) + (None,) for d in sorted(p for p in (data / part).iterdir() if p.is_dir())]
+        miss = [{"trip_id": t.trip_id, "partition": part, "n_points": len(lab),
+                 "candidate_miss_rate": candidate_miss_rate(c, lab)} for t, _, lab, c, _ in prepared]
         parts[part] = prepared
         pd.DataFrame(miss).to_csv(out / f"candidate_miss_{part}.csv", index=False)
         print(f"{part}: {len(prepared)} trips prepared, mean miss rate "
               f"{np.mean([m['candidate_miss_rate'] for m in miss]):.4f}")
 
+    def probs_for(cands, fixed, sigma):
+        return fixed if fixed is not None else distance_probs(cands, sigma)
+
     # --- 1. tune decoder on TRAIN only ---------------------------------
+    sigmas = [float("nan")] if b_mode else list(map(float, args.sigmas.split(",")))
     grid = []
-    for beta, sigma, tol in itertools.product(map(float, args.betas.split(",")),
-                                              map(float, args.sigmas.split(",")),
+    for beta, sigma, tol in itertools.product(map(float, args.betas.split(",")), sigmas,
                                               map(float, args.tols.split(","))):
         params = HMMParams(beta=beta, same_arc_tol=tol)
         rows = []
-        for trip, net, labels, cands in parts["train"]:
-            r, _, _ = evaluate(trip, net, labels, cands, distance_probs(cands, sigma), params)
+        for trip, net, labels, cands, fixed in parts["train"]:
+            r, _, _ = evaluate(trip, net, labels, cands, probs_for(cands, fixed, sigma), params)
             rows += [x for x in r if x["method"] == "classifier_hmm"]
         df = pd.DataFrame(rows)
         rec = {"beta": beta, "sigma": sigma, "same_arc_tol": tol,
@@ -127,9 +158,13 @@ def main():
     best = grid.iloc[0]
     params = HMMParams(beta=float(best["beta"]), same_arc_tol=float(best["same_arc_tol"]))
     sigma = float(best["sigma"])
-    config = {"hmm": params.to_dict(), "stub_classifier_sigma": sigma,
+    config = {"hmm": params.to_dict(),
+              "emission_source": "Person B final model" if b_mode else "distance stand-in",
               "candidates": {"k": K, "radius_m": RADIUS},
-              "selected_by": "mean point accuracy over 80 train trips"}
+              "selected_by": "mean point accuracy over 80 train trips"
+                             + (" (B's out-of-fold probabilities)" if b_mode else "")}
+    if not b_mode:
+        config["stub_classifier_sigma"] = sigma
     (art / "hmm_config.json").write_text(json.dumps(config, indent=2))
     print("best", config)
 
@@ -137,8 +172,8 @@ def main():
     summaries = []
     for part, prepared in parts.items():
         rows = []
-        for trip, net, labels, cands in prepared:
-            r, _, _ = evaluate(trip, net, labels, cands, distance_probs(cands, sigma), params)
+        for trip, net, labels, cands, fixed in prepared:
+            r, _, _ = evaluate(trip, net, labels, cands, probs_for(cands, fixed, sigma), params)
             rows += r
         df = pd.DataFrame(rows)
         df.to_csv(out / f"hmm_vs_classifier_{part}.csv", index=False)
