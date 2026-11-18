@@ -1,5 +1,6 @@
 import pandas as pd
-from loader import list_trips, load_trip
+(ROOT / "results").mkdir(exist_ok=True)
+inv.to_csv(ROOT / "results" / "dataset_inventory.csv", index=False)
 from pathlib import Path
 
 rows = []
