@@ -2,10 +2,9 @@ data/
 __pycache__/
 *.pyc
 # Dataset
-data/*
+/data/
 
-# Python environments
-.venv/
+# Virtual environments
 venv/
 # Python cache
 *.py[cod]
@@ -18,3 +17,15 @@ venv/
 .DS_Store
 results/oof/
 results/final_model_probs_train_oof.csv
+.venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Environment variables and secrets
+.env
+
+# IDE files
+.vscode/
