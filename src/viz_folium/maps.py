@@ -118,20 +118,37 @@ def main():
     ap.add_argument("--trip", nargs="+", required=True)
     ap.add_argument("--out", default="results/maps")
     ap.add_argument("--config", default="artifacts/hmm_config.json")
+    ap.add_argument("--probs", default=None,
+                    help="classifier probability CSV (trip_id, obs_idx, arc_id, label, prob), e.g. "
+                         "results/final_model_probs_student_test.csv; omit to use the distance stand-in")
     args = ap.parse_args()
     cfg = json.loads(Path(args.config).read_text()) if Path(args.config).exists() else {}
     params = HMMParams(**cfg.get("hmm", {}))
     sigma = cfg.get("stub_classifier_sigma", 10.0)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    table = None
+    if args.probs:
+        import pandas as pd
+        table = pd.read_csv(args.probs, dtype={"trip_id": str})
+        table["trip_id"] = table["trip_id"].str.zfill(8)
     for d in args.trip:
         trip = load_trip(d)
         net = RoadNetwork.from_trip(trip)
-        cands = build_candidates(trip, net)
-        probs = distance_probs(cands, sigma)
+        n = len(trip.track_xy)
+        if table is None:
+            cands = build_candidates(trip, net)
+            probs = distance_probs(cands, sigma)
+            labels, _ = reference_labels(trip, net)
+        else:  # the trained classifier's candidates, probabilities and labels
+            g = table[table["trip_id"] == trip.trip_id]
+            cands = g[["obs_idx", "arc_id"]].reset_index(drop=True)
+            probs = g["prob"].to_numpy(dtype=float)
+            labels = np.full(n, -1, dtype=np.int64)
+            pos = g[g["label"] == 1]
+            labels[pos["obs_idx"].to_numpy()] = pos["arc_id"].to_numpy()
         hmm, _ = decode(cands, probs, trip, net, params)
-        base = top1_from_probs(cands, probs, len(trip.track_xy))
-        labels, _ = reference_labels(trip, net)
+        base = top1_from_probs(cands, probs, n)
         path = out / f"trip_{trip.trip_id}.html"
         trip_map(trip, net, hmm, base, labels).save(path)
         print("wrote", path)
