@@ -23,6 +23,22 @@ from sklearn.preprocessing import StandardScaler
 from .config import SEED
 
 
+class CappedKNN(KNeighborsClassifier):
+    """KNN that fits on a uniform random subsample of at most `max_train_rows` rows.
+    Uniform row sampling keeps the class prior, so probabilities are not distorted;
+    it only keeps prediction time bearable on ~1M-row tables."""
+
+    def __init__(self, n_neighbors=25, weights="distance", n_jobs=-1, max_train_rows=200_000, random_state=SEED):
+        super().__init__(n_neighbors=n_neighbors, weights=weights, n_jobs=n_jobs)
+        self.max_train_rows, self.random_state = max_train_rows, random_state
+
+    def fit(self, X, y):
+        if len(X) > self.max_train_rows:
+            idx = __import__("numpy").random.RandomState(self.random_state).choice(len(X), self.max_train_rows, replace=False)
+            X, y = X[idx], y[idx]
+        return super().fit(X, y)
+
+
 def _pipe(clf, scale):
     steps = [("impute", SimpleImputer(strategy="median"))]
     if scale:
@@ -35,8 +51,8 @@ def _pipe(clf, scale):
 DEFAULTS = {
     "logreg": dict(C=1.0, max_iter=500),
     "gaussian_nb": dict(var_smoothing=1e-9),
-    "knn": dict(n_neighbors=25, weights="distance"),
-    "random_forest": dict(n_estimators=200, max_depth=None, min_samples_leaf=5, max_features="sqrt"),
+    "knn": dict(n_neighbors=25, weights="distance", max_train_rows=200_000),
+    "random_forest": dict(n_estimators=150, max_depth=None, min_samples_leaf=5, max_features="sqrt", max_samples=0.25),
     "hist_gb": dict(learning_rate=0.1, max_iter=200, max_leaf_nodes=31, min_samples_leaf=20,
                     l2_regularization=0.0),
     "mlp": dict(hidden=64, hidden2=32, alpha=1e-4, learning_rate_init=1e-3, max_iter=100),
@@ -52,13 +68,13 @@ def build(name, params=None, imbalance="none"):
     if name == "gaussian_nb":
         return _pipe(GaussianNB(var_smoothing=p["var_smoothing"]), scale=True)
     if name == "knn":
-        return _pipe(KNeighborsClassifier(n_neighbors=int(p["n_neighbors"]), weights=p["weights"],
-                                          n_jobs=-1), scale=True)
+        return _pipe(CappedKNN(n_neighbors=int(p["n_neighbors"]), weights=p["weights"],
+                                 n_jobs=-1, max_train_rows=int(p["max_train_rows"])), scale=True)
     if name == "random_forest":
         return _pipe(RandomForestClassifier(
             n_estimators=int(p["n_estimators"]), max_depth=None if p["max_depth"] in (None, 0) else int(p["max_depth"]),
             min_samples_leaf=int(p["min_samples_leaf"]), max_features=p["max_features"],
-            class_weight="balanced_subsample" if cw else None, n_jobs=-1, random_state=SEED), scale=False)
+            max_samples=p["max_samples"], class_weight="balanced_subsample" if cw else None, n_jobs=-1, random_state=SEED), scale=False)
     if name == "hist_gb":
         return _pipe(HistGradientBoostingClassifier(
             learning_rate=p["learning_rate"], max_iter=int(p["max_iter"]),

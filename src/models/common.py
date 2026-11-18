@@ -11,10 +11,17 @@ from . import config as C
 
 def _read_table(stem: str) -> pd.DataFrame:
     pq, csv = C.FEATURE_DIR / f"{stem}.parquet", C.FEATURE_DIR / f"{stem}.csv"
+    df = None
     if pq.exists():
-        return pd.read_parquet(pq).astype({"trip_id": str})
-    if csv.exists():
-        return pd.read_csv(csv, dtype={"trip_id": str})   # keep ids like '00000001' (leading zeros)
+        df = pd.read_parquet(pq)
+    elif csv.exists():
+        df = pd.read_csv(csv, dtype={"trip_id": str})   # keep ids like '00000001' (leading zeros)
+    if df is not None:
+        df["trip_id"] = df["trip_id"].astype(str)
+        for old, new in C.LABEL_ALIASES.items():
+            if old in df.columns and new not in df.columns:
+                df = df.rename(columns={old: new})
+        return df
     raise FileNotFoundError(
         f"Feature table '{stem}' not found in {C.FEATURE_DIR} (looked for .parquet and .csv). "
         "Person A must export it - see README_B.md, section 'Input contract'."
@@ -50,6 +57,11 @@ def validate_table(df: pd.DataFrame, name: str) -> None:
 
 def load_train_test():
     train, test = _read_table(C.TRAIN_TABLE_STEM), _read_table(C.TEST_TABLE_STEM)
+    if C.DROP_FLAGGED_TRAIN_TRIPS and "trip_flagged" in train.columns:
+        flagged = sorted(train.loc[train.trip_flagged.astype(bool), "trip_id"].unique())
+        if flagged:
+            print(f"[data] dropping {len(flagged)} flagged (misaligned-label) TRAIN trips from fitting/CV: {flagged}")
+            train = train[~train.trip_id.isin(flagged)]
     validate_table(train, "train")
     validate_table(test, "student_test")
     overlap = set(train.trip_id.unique()) & set(test.trip_id.unique())
@@ -72,6 +84,8 @@ def get_folds(train: pd.DataFrame, n_splits: int = C.N_FOLDS, seed: int = C.SEED
     similar number of candidate rows.
     """
     trips = train.trip_id.astype(str)
+    if "fold" in train.columns and train["fold"].notna().all():     # A's shared split travels with the table
+        return train["fold"].to_numpy().astype(int)
     if C.FOLDS_FILE.exists():
         spec = json.loads(C.FOLDS_FILE.read_text())
         m = spec["trip_to_fold"]

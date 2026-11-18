@@ -26,7 +26,12 @@ KEY_COLS = ["trip_id", "obs_idx", "arc_id"]
 LABEL_COL = "label"                            # 1 if arc_id is the reference arc for that point
 META_COLS = KEY_COLS + [LABEL_COL]
 # Columns that exist in the table but must NOT be fed to a model (add A's extras here).
-EXCLUDE_FEATURE_COLS: list = []
+# Person A's table uses `y` for the label and carries two non-feature columns: `trip_flagged` and `fold`.
+LABEL_ALIASES = {"y": "label"}                 # renamed to `label` on load
+EXCLUDE_FEATURE_COLS: list = ["trip_flagged", "fold"]
+# A flags trips whose reference route lies >50 m from most GPS points (misaligned labels).
+# Dropping them from TRAINING/CV only (never from student-test) keeps label noise out of fitting.
+DROP_FLAGGED_TRAIN_TRIPS = True
 
 SEED = 42
 N_FOLDS = 5

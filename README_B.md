@@ -4,23 +4,22 @@ Everything here runs on **Person A's candidate/feature tables**. The code is fin
 a *synthetic* table (tests/make_synthetic_feature_tables.py) to prove it runs. **No real result exists yet** - nothing
 from the synthetic run may go in the report. When A's real tables land, run `./run_all_B.sh`.
 
-## 1. Input contract (what A must export)
-`data/processed/train_features.(csv|parquet)` (80 train trips) and `student_test_features.(csv|parquet)` (10 trips).
-One row per (GPS point, candidate arc):
+## 1. Input contract (matches Person A's `make_tables.py`)
+Files: `data/processed/train_features.parquet` and `student_test_features.parquet` (csv also accepted).
+One row per (GPS point, candidate arc): `trip_id` (text, e.g. `00000001`), `obs_idx`, `arc_id`, label column `y`
+(renamed to `label` on load), and 14 features: `dist, rank, dist_min, dist_gap, n_cand, t_along, arc_len, cos_head,
+head_ok, speed, dt_prev, dt_next, dist_prev, dist_next`. Extra columns `fold` (A's shared trip-level split, used as is) and
+`trip_flagged` are never given to a model. Trips A flags as misaligned (reference route >50 m from most points; 2 of the 80
+train trips) are dropped from fitting/CV only (`config.DROP_FLAGGED_TRAIN_TRIPS`) - say so in the report; student-test is untouched.
 
-| column | meaning |
-|---|---|
-| `trip_id`, `obs_idx`, `arc_id` | keys |
-| `label` | 1 if `arc_id` is the reference arc chosen for that GPS point, else 0 |
-| everything else | numeric features (distance to arc, position along arc, heading diff, speed, time gap, arc length, candidate rank, neighbour context ...) |
+Generate the tables (A's code, needs the raw `data/` folder, `pip install shapely pyproj pyarrow`):
+`python src/features/make_tables.py`  (A's `artifacts/scaler.joblib` is not used by B: scaling lives inside each model pipeline, fit on train only).
 
 Guards in `common.py`: label must be 0/1, no trip in both tables, same feature columns in both, numeric features only,
-and any feature whose name looks like `label/truth/reference/ref_` is rejected (leakage). NaNs are fine (median-imputed, fit on train only).
-Evaluator-trip data is never read by any B script.
-
-Needed from A, otherwise B reports slightly optimistic numbers: **a candidate row for the reference arc must exist whenever possible**
-(Candidate Miss Rate is computed here from the table as the share of GPS points with no `label=1` row). GPS points with *zero*
-candidates are absent from the table, so they are not counted in Top-1 - ask A for a count of such points to quote beside it.
+names that look like `label/truth/reference/ref_` are rejected. Evaluator-trip data is never read by any B script.
+Row counts from A's `results/feature_table_summary.csv`: ~1.45M train rows (12.8% positive), ~150k student-test rows.
+Because of that size: KNN fits on a random 200k-row subsample (`zoo.CappedKNN`, class prior preserved) and Random Forest uses
+`max_samples=0.25`; both are recorded in the config column of the results. Candidate Miss Rate is also in A's summary (0.99% on clean train trips, 0.16% on student-test).
 
 ## 2. Run order and outputs
 | step | command | key outputs in `results/` |
