@@ -1,8 +1,22 @@
+data/
+__pycache__/
+*.pyc
 # Dataset
 /data/
 
 # Virtual environments
 venv/
+# Python cache
+*.py[cod]
+# Jupyter
+.ipynb_checkpoints/
+# IDE
+.vscode/
+# Temporary files
+*.log
+.DS_Store
+results/oof/
+results/final_model_probs_train_oof.csv
 .venv/
 
 # Python cache files
