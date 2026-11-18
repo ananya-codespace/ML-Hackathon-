@@ -1,101 +1,120 @@
 
 """
-Temporary PathSnap prediction pipeline.
-
-These are mock implementations for backend development.
-They will be replaced with the actual implementations
-from Persons A, B and C.
+PathSnap prediction pipeline.
+Connects candidate generation, trained classifier,
+HMM/Viterbi decoding and Folium visualisation.
 """
 
+import numpy as np
+import pandas as pd
 
-def build_candidates(trip_id):
-    """
-    Mock candidate generation (Person A).
+from src.data.loader import DATA
+from src.features.build_features import build_trip
+from src.models.inference import FinalClassifier
 
-    Generates sample candidate road segments for each GPS point.
-    """
+from src.hmm_viterbi.network import load_trip, RoadNetwork
+from src.hmm_viterbi.viterbi import decode, HMMParams
 
-    candidates = [
-        {"trip_id": trip_id, "obs_idx": 0, "arc_id": 101},
-        {"trip_id": trip_id, "obs_idx": 0, "arc_id": 102},
-
-        {"trip_id": trip_id, "obs_idx": 1, "arc_id": 103},
-        {"trip_id": trip_id, "obs_idx": 1, "arc_id": 104},
-
-        {"trip_id": trip_id, "obs_idx": 2, "arc_id": 105},
-        {"trip_id": trip_id, "obs_idx": 2, "arc_id": 106},
-    ]
-
-    return candidates
+from src.viz_folium.maps import trip_map
 
 
-def predict_proba(table):
-    """
-    Mock classifier prediction (Person B).
-
-    Returns sample probabilities for each candidate arc.
-    """
-
-    probabilities = [0.85, 0.15, 0.75, 0.25, 0.90, 0.10]
-
-    return probabilities
+_classifier = None
 
 
-def decode(candidates, probs, network):
-    """
-    Mock route decoding (Person C).
+def get_classifier():
+    """Load the trained classifier once and reuse it."""
+    global _classifier
 
-    Selects the highest-probability candidate
-    for each GPS observation.
+    if _classifier is None:
+        _classifier = FinalClassifier.load()
 
-    This is NOT the actual HMM/Viterbi algorithm.
-    """
-
-    predictions = {}
-
-    for candidate, probability in zip(candidates, probs):
-
-        obs_idx = candidate["obs_idx"]
-        arc_id = candidate["arc_id"]
-
-        if (obs_idx not in predictions or
-                probability > predictions[obs_idx]["probability"]):
-
-            predictions[obs_idx] = {
-                "arc_id": arc_id,
-                "probability": probability
-            }
-
-    predicted_route = [
-        predictions[index]["arc_id"]
-        for index in sorted(predictions)
-    ]
-
-    return predicted_route
+    return _classifier
 
 
 def run_pipeline(trip_id):
     """
-    Executes the temporary PathSnap pipeline.
+    Runs the actual PathSnap map-matching pipeline.
+
+    Ground-truth routes are not loaded during prediction.
     """
 
-    # Step 1: Generate candidates
-    candidates = build_candidates(trip_id)
+    trip_dir = DATA / "student_test" / trip_id
 
-    # Step 2: Obtain classifier probabilities
-    probabilities = predict_proba(candidates)
+    if not trip_dir.is_dir():
+        raise FileNotFoundError(
+            f"Student-test trip not found: {trip_id}"
+        )
 
-    # Step 3: Decode the predicted route
-    network = None
-    predicted_route = decode(
+    # 1. Generate candidates and features.
+    candidates, _ = build_trip(
+        trip_id,
+        with_label=False
+    )
+
+    if candidates.empty:
+        raise ValueError(
+            f"No candidate road segments found for {trip_id}"
+        )
+
+    # 2. Load the trip and road network without reference labels.
+    trip = load_trip(
+        trip_dir,
+        with_route=False
+    )
+
+    network = RoadNetwork.from_trip(trip)
+
+    # 3. Get probabilities from the trained model.
+    classifier = get_classifier()
+
+    probabilities = classifier.predict_proba(candidates)
+
+    # 4. Classifier-only predictions.
+    candidate_results = candidates.copy()
+    candidate_results["probability"] = probabilities
+
+    best_indices = (
+        candidate_results.groupby("obs_idx")["probability"]
+        .idxmax()
+    )
+
+    classifier_route = np.full(
+        len(trip.track_xy), -1, dtype=int
+    )
+
+    best_rows = candidate_results.loc[best_indices]
+
+    classifier_route[
+        best_rows["obs_idx"].to_numpy(dtype=int)
+    ] = best_rows["arc_id"].to_numpy(dtype=int)
+
+    # 5. HMM/Viterbi route reconstruction.
+    hmm_route, hmm_info = decode(
         candidates,
         probabilities,
-        network
+        trip,
+        network,
+        HMMParams()
     )
+
+    # 6. Generate Folium map.
+    map_object = trip_map(
+        trip,
+        network,
+        pred_hmm=hmm_route,
+        pred_classifier=classifier_route,
+        labels=None,
+        show_reference=False
+    )
+
+    map_html = map_object.get_root().render()
 
     return {
         "trip_id": trip_id,
-        "predicted_route": predicted_route,
-        "is_mock": True,
-        "message": "Temporary mock prediction. Not actual ML output."
+        "predicted_route": hmm_route.tolist(),
+        "classifier_route": classifier_route.tolist(),
+        "hmm_info": hmm_info,
+        "candidate_count": len(candidates),
+        "is_mock": False,
+        "map_html": map_html
     }

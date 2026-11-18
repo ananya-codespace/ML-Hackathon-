@@ -1,7 +1,7 @@
 
 from pathlib import Path
 
-# Find the root directory of the project
+# Project root directory
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Project directories
