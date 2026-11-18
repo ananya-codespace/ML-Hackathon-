@@ -2,16 +2,24 @@ import numpy as np, pandas as pd, shapely
 from shapely import STRtree
 from pyproj import Transformer
 
-CRS = "EPSG:32632"  # UTM 32N: Darmstadt is at ~8.6E, inside zone 32 (6-12E)
-_tf = Transformer.from_crs("EPSG:4326", CRS, always_xy=True)
+def utm_epsg(lon, lat):
+    zone = int((lon + 180) // 6) + 1
+    return f"EPSG:{(32600 if lat >= 0 else 32700) + zone}"
 
-def to_xy(lon, lat):
-    x, y = _tf.transform(np.asarray(lon, float), np.asarray(lat, float))
+def crs_for_track(track):
+    return utm_epsg(track["lon"].median(), track["lat"].median())
+
+_tf_cache = {}
+def to_xy(lon, lat, crs):
+    if crs not in _tf_cache:
+        _tf_cache[crs] = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
+    x, y = _tf_cache[crs].transform(np.asarray(lon, float), np.asarray(lat, float))
     return np.column_stack([x, y])
 
 class RoadNetwork:
-    def __init__(self, nodes, arcs):
-        self.node_xy = to_xy(nodes["lon"].values, nodes["lat"].values)
+    def __init__(self, nodes, arcs, crs):
+        self.crs = crs
+        self.node_xy = to_xy(nodes["lon"].values, nodes["lat"].values, crs)
         f, t = arcs["from_node"].values, arcs["to_node"].values
         self.from_node, self.to_node = f, t
         self.start, self.end = self.node_xy[f], self.node_xy[t]
