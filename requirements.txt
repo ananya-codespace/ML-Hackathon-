@@ -2,3 +2,10 @@ fastapi
 uvicorn[standard]
 streamlit
 requests
+numpy
+pandas
+scikit-learn
+scipy
+matplotlib
+seaborn
+folium

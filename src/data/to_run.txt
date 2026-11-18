@@ -1,0 +1,9 @@
+python -m pytest tests -q
+
+start results\map_00000001_train.html
+
+python -c "import sys; sys.path.insert(0,'src/features'); from build_features import build_candidates; df=build_candidates('00000001'); print(df.shape); print(df.head())"
+
+start results\figures\eda_train_overview.png
+
+python src\features\make_tables.py

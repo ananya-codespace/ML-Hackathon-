@@ -1,8 +1,17 @@
-data/
+# Dataset
 /data/
+
+# Virtual environments
 venv/
 .venv/
+
+# Python cache files
 __pycache__/
-*.pyc
+*.py[cod]
 .ipynb_checkpoints/
+
+# Environment variables and secrets
 .env
+
+# IDE files
+.vscode/
