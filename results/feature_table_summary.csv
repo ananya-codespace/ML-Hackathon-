@@ -1,5 +1,5 @@
 partition,subset,trips,points,rows,pos_rate_pct,miss_pct,rows_per_point
 train,all,80,208417,1452223,12.78,10.92,6.97
 train,clean,78,183260,1360436,13.34,0.99,7.42
-student_test,all,10,19160,149946,12.76,0.16,7.83
-student_test,clean,10,19160,149946,12.76,0.16,7.83
+student_test,all,10,19160,149946,12.76,0.17,7.83
+student_test,clean,10,19160,149946,12.76,0.17,7.83

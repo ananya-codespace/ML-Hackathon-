@@ -162,8 +162,9 @@ def main():
     sigma = float(best["sigma"])
     config = {"hmm": params.to_dict(),
               "emission_source": "Person B final model" if b_mode else "distance stand-in",
-              "candidates": {"k": K, "radius_m": RADIUS},
-              "selected_by": "mean point accuracy over 80 train trips"
+              "candidates": ({"source": "Person A feature table (k=10, radius 75 m)"} if b_mode
+                             else {"k": K, "radius_m": RADIUS}),
+              "selected_by": f"mean point accuracy over {len(parts['train'])} train trips"
                              + (" (B's out-of-fold probabilities)" if b_mode else "")}
     if not b_mode:
         config["stub_classifier_sigma"] = sigma
