@@ -16,3 +16,5 @@ venv/
 # Temporary files
 *.log
 .DS_Store
+results/oof/
+results/final_model_probs_train_oof.csv

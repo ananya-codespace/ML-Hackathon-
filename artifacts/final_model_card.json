@@ -1,0 +1,21 @@
+{
+ "model": "hist_gb",
+ "shipped": "untuned",
+ "feature_cols": [
+  "dist",
+  "rank",
+  "dist_min",
+  "dist_gap",
+  "n_cand",
+  "t_along",
+  "arc_len",
+  "cos_head",
+  "head_ok",
+  "speed",
+  "dt_prev",
+  "dt_next",
+  "dist_prev",
+  "dist_next"
+ ],
+ "threshold": 0.44
+}

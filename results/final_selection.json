@@ -1,0 +1,13 @@
+{
+ "selected_model": "hist_gb",
+ "label": "HistGradientBoosting",
+ "rule": "(written down BEFORE looking at results; applied mechanically, never on training accuracy):\n  primary metric = mean grouped-CV macro F1 (macro F1 averages the 'true arc' and 'not true arc'\n  classes, so the rare positive class counts as much as the abundant negatives).\n  1. Keep models whose CV macro F1 is within one fold-standard-error of the best model.\n  2. Among those, prefer lower CV log loss (probability quality - the HMM uses these as emissions).\n  3. Break remaining ties with lower inference time, then simpler model.\nStudent-test numbers are shown for sanity but are NOT part of the rule.",
+ "best_cv_f1_model": "random_forest",
+ "best_cv_f1": 0.9007132541670183,
+ "one_se": 0.010188568331953536,
+ "candidates_within_1se": [
+  "hist_gb",
+  "random_forest",
+  "mlp"
+ ]
+}
