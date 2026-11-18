@@ -5,10 +5,14 @@ Connects candidate generation, trained classifier,
 HMM/Viterbi decoding and Folium visualisation.
 """
 
+import json
+import time
+
 import numpy as np
 import pandas as pd
 
-from src.data.loader import DATA
+from src.api.config import HMM_CONFIG_PATH, TRIPS_DIR, TRIPS_PARTITION
+from src.evaluate_trips import score_trip
 from src.features.build_features import build_trip
 from src.models.inference import FinalClassifier
 
@@ -19,6 +23,7 @@ from src.viz_folium.maps import trip_map
 
 
 _classifier = None
+_hmm_params = None
 
 
 def get_classifier():
@@ -31,18 +36,32 @@ def get_classifier():
     return _classifier
 
 
+def get_hmm_params():
+    """Load the tuned HMM settings (artifacts/hmm_config.json) once and reuse them."""
+    global _hmm_params
+
+    if _hmm_params is None:
+        config = json.loads(HMM_CONFIG_PATH.read_text())
+        _hmm_params = HMMParams(**config["hmm"])
+
+    return _hmm_params
+
+
 def run_pipeline(trip_id):
     """
     Runs the actual PathSnap map-matching pipeline.
 
-    Ground-truth routes are not loaded during prediction.
+    Ground-truth routes are not loaded during prediction; the reference
+    route is read only afterwards, on this server, to compute the metrics.
     """
 
-    trip_dir = DATA / "student_test" / trip_id
+    start = time.perf_counter()
+
+    trip_dir = TRIPS_DIR / trip_id
 
     if not trip_dir.is_dir():
         raise FileNotFoundError(
-            f"Student-test trip not found: {trip_id}"
+            f"Trip not found in {TRIPS_PARTITION}: {trip_id}"
         )
 
     # 1. Generate candidates and features.
@@ -94,10 +113,36 @@ def run_pipeline(trip_id):
         probabilities,
         trip,
         network,
-        HMMParams()
+        get_hmm_params()
     )
 
-    # 6. Generate Folium map.
+    processing_seconds = time.perf_counter() - start
+
+    # 6. Score against the server-side reference route (after prediction).
+    scores = score_trip(
+        trip_id,
+        TRIPS_PARTITION,
+        {
+            "net": network,
+            "classifier_only": classifier_route,
+            "hmm": hmm_route,
+            "info": hmm_info,
+            "seconds": processing_seconds,
+        },
+    )
+    classifier_scores, hmm_scores = scores[0], scores[1]
+
+    metrics = {
+        "point_accuracy": round(hmm_scores["point_accuracy"], 4),
+        "route_continuity": round(hmm_scores["route_continuity"], 4),
+        "route_precision": round(hmm_scores["route_precision"], 4),
+        "route_recall": round(hmm_scores["route_recall"], 4),
+        "route_f1": round(hmm_scores["route_f1"], 4),
+        "classifier_only_point_accuracy": round(classifier_scores["point_accuracy"], 4),
+        "classifier_only_route_continuity": round(classifier_scores["route_continuity"], 4),
+    }
+
+    # 7. Generate Folium map (reference route not shown).
     map_object = trip_map(
         trip,
         network,
@@ -115,6 +160,9 @@ def run_pipeline(trip_id):
         "classifier_route": classifier_route.tolist(),
         "hmm_info": hmm_info,
         "candidate_count": len(candidates),
+        "metrics": metrics,
+        "n_gps_points": int(len(trip.track_xy)),
+        "processing_seconds": round(processing_seconds, 2),
         "is_mock": False,
         "map_html": map_html
     }
