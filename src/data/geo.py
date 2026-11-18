@@ -36,6 +36,8 @@ class RoadNetwork:
         obs, arc = self.tree.query(pts, predicate="dwithin", distance=radius)
         df = pd.DataFrame({"obs_idx": obs, "arc_id": arc})
         df["dist"] = shapely.distance(pts[obs], self.geoms[arc])
-        df = df.sort_values(["obs_idx", "dist"]).reset_index(drop=True)
+        # Two-way streets give two arcs at exactly the same distance, so break ties by arc_id
+        # with a stable sort: otherwise `rank` and the top-k cut change between library versions.
+        df = df.sort_values(["obs_idx", "dist", "arc_id"], kind="stable").reset_index(drop=True)
         df["rank"] = df.groupby("obs_idx").cumcount()
         return df if k is None else df[df["rank"] < k].reset_index(drop=True)

@@ -1,6 +1,6 @@
 {
  "model": "hist_gb",
- "shipped": "untuned",
+ "shipped": "tuned",
  "feature_cols": [
   "dist",
   "rank",

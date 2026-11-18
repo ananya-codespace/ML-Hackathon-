@@ -6,5 +6,11 @@ def label_points(net, pts_xy, route):
     Returns (label_arc_id, distance_to_that_arc_m)."""
     route = np.asarray(route)
     tree = STRtree(net.geoms[route])
-    idx, dist = tree.query_nearest(shapely.points(pts_xy), return_distance=True, all_matches=False)
-    return route[idx[1]], dist
+    # all_matches=True returns every equally-near route arc; keep the earliest one in the route
+    # so ties (e.g. a street driven in both directions) are resolved the same way every run.
+    (pt, pos), dist = tree.query_nearest(shapely.points(pts_xy), return_distance=True, all_matches=True)
+    best = np.full(len(pts_xy), np.iinfo(np.int64).max)
+    np.minimum.at(best, pt, pos)
+    d = np.zeros(len(pts_xy))
+    d[pt] = dist
+    return route[best], d

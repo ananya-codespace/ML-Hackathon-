@@ -42,13 +42,18 @@ def tuning(results: Path, out: Path):
     best = g.iloc[0]
     g = g[(g["same_arc_tol"] == best["same_arc_tol"])]
     fig, ax = plt.subplots(figsize=(5, 3.4))
-    for s, sub in g.groupby("sigma"):
+    for s, sub in g.groupby("sigma", dropna=False):
         sub = sub.sort_values("beta")
-        ax.plot(sub["beta"], sub["mean_point_accuracy"], marker="o", label=f"sigma={s:g} m")
+        label = "classifier probabilities" if pd.isna(s) else f"sigma={s:g} m"
+        ax.plot(sub["beta"], sub["mean_point_accuracy"], marker="o", label=label)
     ax.set_xscale("log")
+    betas = sorted(g["beta"].unique())
+    ax.set_xticks(betas)
+    ax.set_xticklabels([f"{b:g}" for b in betas])
+    ax.minorticks_off()
     ax.set_xlabel("beta (m)")
     ax.set_ylabel("mean point accuracy (train)")
-    ax.set_title(f"Decoder tuning, 80 train trips (tol={best['same_arc_tol']:g} m)")
+    ax.set_title(f"Decoder tuning on train trips (same_arc_tol={best['same_arc_tol']:g} m)")
     ax.legend()
     fig.tight_layout()
     fig.savefig(out / "decoder_tuning_train.png", dpi=150)

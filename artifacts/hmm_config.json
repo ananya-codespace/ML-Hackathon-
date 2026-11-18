@@ -1,17 +1,16 @@
 {
   "hmm": {
-    "beta": 10.0,
+    "beta": 2.0,
     "emission_weight": 1.0,
     "max_gap_s": 60.0,
     "detour_factor": 2.0,
     "detour_slack": 100.0,
-    "same_arc_tol": 30.0,
+    "same_arc_tol": 60.0,
     "min_prob": 1e-12
   },
-  "stub_classifier_sigma": 5.0,
+  "emission_source": "Person B final model",
   "candidates": {
-    "k": 8,
-    "radius_m": 50.0
+    "source": "Person A feature table (k=10, radius 75 m)"
   },
-  "selected_by": "mean point accuracy over 80 train trips"
+  "selected_by": "mean point accuracy over 78 train trips (B's out-of-fold probabilities)"
 }

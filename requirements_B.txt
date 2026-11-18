@@ -1,7 +1,2 @@
-numpy>=1.26
-pandas>=2.1
-scipy>=1.11
-scikit-learn>=1.4
-matplotlib>=3.8
-joblib>=1.3
-pyarrow>=14      # reads A's .parquet feature tables
+# Person B uses the team-wide pinned requirements (scikit-learn must match the saved model).
+-r requirements.txt
