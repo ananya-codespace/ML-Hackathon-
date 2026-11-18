@@ -28,7 +28,7 @@ plt.tight_layout(); plt.savefig(FIG / f"trip_{TRIP}_{PART}.png", dpi=150)
 # ---- Folium map
 nodes = d["nodes"][["lat", "lon"]].to_numpy(); arcs = d["arcs"].to_numpy()
 tr = d["track"]
-m = folium.Map(location=[tr.lat.mean(), tr.lon.mean()], zoom_start=14, tiles="CartoDB positron")
+m = folium.Map(location=[tr.lat.mean(), tr.lon.mean()], zoom_start=14, tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", attr="Esri World Street Map")
 g_net = folium.FeatureGroup(name="Road network (within 60 m)"); g_rt = folium.FeatureGroup(name="Reference route")
 g_gps = folium.FeatureGroup(name="GPS points")
 for a in near:
