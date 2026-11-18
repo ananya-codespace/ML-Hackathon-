@@ -1,11 +1,18 @@
 data/
-data/
 __pycache__/
 *.pyc
-data/
-__pycache__/
-*.pyc
-data/
-__pycache__/
-*.pyc
+# Dataset
+data/*
+
+# Python environments
+.venv/
+venv/
+# Python cache
+*.py[cod]
+# Jupyter
+.ipynb_checkpoints/
+# IDE
+.vscode/
+# Temporary files
+*.log
 .DS_Store
