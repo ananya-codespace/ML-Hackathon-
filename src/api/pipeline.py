@@ -1,101 +1,89 @@
-
 """
-Temporary PathSnap prediction pipeline.
+PathSnap prediction pipeline used by the API.
 
-These are mock implementations for backend development.
-They will be replaced with the actual implementations
-from Persons A, B and C.
+    candidates + features (Person A) -> tuned classifier (Person B) -> HMM/Viterbi (Person C)
+
+The model and decoder settings are loaded once at start-up from artifacts/.
+Prediction reads only .track/.nodes/.arcs. The reference route (.route) is read
+afterwards, only on the server, to compute accuracy; it is never returned to the UI.
 """
 
+import json
+import logging
+import time
 
-def build_candidates(trip_id):
-    """
-    Mock candidate generation (Person A).
+import numpy as np
 
-    Generates sample candidate road segments for each GPS point.
-    """
+from src.api.config import ARTIFACTS_DIR, MAX_GPS_POINTS_RETURNED, TRIPS_DIR, TRIPS_PARTITION
+from src.evaluate_trips import predict_trip, score_trip
+from src.hmm_viterbi.metrics import collapse
+from src.hmm_viterbi.viterbi import HMMParams
+from src.models.inference import FinalClassifier
 
-    candidates = [
-        {"trip_id": trip_id, "obs_idx": 0, "arc_id": 101},
-        {"trip_id": trip_id, "obs_idx": 0, "arc_id": 102},
+logger = logging.getLogger(__name__)
 
-        {"trip_id": trip_id, "obs_idx": 1, "arc_id": 103},
-        {"trip_id": trip_id, "obs_idx": 1, "arc_id": 104},
-
-        {"trip_id": trip_id, "obs_idx": 2, "arc_id": 105},
-        {"trip_id": trip_id, "obs_idx": 2, "arc_id": 106},
-    ]
-
-    return candidates
+_STATE = {}
 
 
-def predict_proba(table):
-    """
-    Mock classifier prediction (Person B).
+def load_artifacts():
+    """Load the classifier and HMM settings once (called at API start-up)."""
+    if "clf" in _STATE:
+        return
+    t0 = time.perf_counter()
+    _STATE["clf"] = FinalClassifier.load()
+    cfg = json.loads((ARTIFACTS_DIR / "hmm_config.json").read_text())
+    _STATE["hmm"] = HMMParams(**cfg["hmm"])
+    logger.info("Loaded model %s (tuned=%s) and HMM settings %s in %.1fs; trips from %s",
+                _STATE["clf"].meta.get("model"), _STATE["clf"].meta.get("tuned"),
+                cfg["hmm"], time.perf_counter() - t0, TRIPS_DIR)
 
-    Returns sample probabilities for each candidate arc.
-    """
 
-    probabilities = [0.85, 0.15, 0.75, 0.25, 0.90, 0.10]
+def available_trips():
+    """Trip IDs = the trip folders present on this server."""
+    if not TRIPS_DIR.is_dir():
+        return []
+    return sorted(p.name for p in TRIPS_DIR.iterdir() if p.is_dir())
 
-    return probabilities
 
-
-def decode(candidates, probs, network):
-    """
-    Mock route decoding (Person C).
-
-    Selects the highest-probability candidate
-    for each GPS observation.
-
-    This is NOT the actual HMM/Viterbi algorithm.
-    """
-
-    predictions = {}
-
-    for candidate, probability in zip(candidates, probs):
-
-        obs_idx = candidate["obs_idx"]
-        arc_id = candidate["arc_id"]
-
-        if (obs_idx not in predictions or
-                probability > predictions[obs_idx]["probability"]):
-
-            predictions[obs_idx] = {
-                "arc_id": arc_id,
-                "probability": probability
-            }
-
-    predicted_route = [
-        predictions[index]["arc_id"]
-        for index in sorted(predictions)
-    ]
-
-    return predicted_route
+def _latlon(lonlat):
+    return [[round(float(lat), 6), round(float(lon), 6)] for lon, lat in lonlat]
 
 
 def run_pipeline(trip_id):
-    """
-    Executes the temporary PathSnap pipeline.
-    """
+    """Predict the route for one trip, then score it against the server-side reference."""
+    load_artifacts()
+    pred = predict_trip(trip_id, TRIPS_PARTITION, _STATE["clf"], _STATE["hmm"])
+    rows = score_trip(trip_id, TRIPS_PARTITION, pred)  # reads .route only here
+    clf_row, hmm_row = rows[0], rows[1]
 
-    # Step 1: Generate candidates
-    candidates = build_candidates(trip_id)
-
-    # Step 2: Obtain classifier probabilities
-    probabilities = predict_proba(candidates)
-
-    # Step 3: Decode the predicted route
-    network = None
-    predicted_route = decode(
-        candidates,
-        probabilities,
-        network
-    )
+    trip = pred["trip"]
+    arcs = trip.arcs
+    nodes = trip.nodes_lonlat
+    route_arcs = collapse(pred["hmm"])  # driving order, consecutive repeats removed
+    segments = [_latlon([nodes[arcs[a, 0]], nodes[arcs[a, 1]]]) for a in route_arcs]
+    step = max(1, len(trip.track_lonlat) // MAX_GPS_POINTS_RETURNED)
 
     return {
         "trip_id": trip_id,
-        "predicted_route": predicted_route,
-        "is_mock": True,
-        "message": "Temporary mock prediction. Not actual ML output."
+        "n_gps_points": int(len(trip.track_lonlat)),
+        "predicted_route": [int(a) for a in route_arcs],
+        "predicted_segments": segments,
+        "gps_points": _latlon(trip.track_lonlat[::step]),
+        "gps_points_step": int(step),
+        "metrics": {
+            "point_accuracy": round(hmm_row["point_accuracy"], 4),
+            "route_continuity": round(hmm_row["route_continuity"], 4),
+            "route_precision": round(hmm_row["route_precision"], 4),
+            "route_recall": round(hmm_row["route_recall"], 4),
+            "route_f1": round(hmm_row["route_f1"], 4),
+            "classifier_only_point_accuracy": round(clf_row["point_accuracy"], 4),
+            "classifier_only_route_continuity": round(clf_row["route_continuity"], 4),
+        },
+        "decoder": {
+            "time_gap_breaks": int(pred["info"]["breaks_time_gap"]),
+            "unreachable_breaks": int(pred["info"]["breaks_unreachable"]),
+            "points_without_candidates": int(pred["info"]["n_no_candidate"]),
+        },
+        "processing_seconds": round(pred["seconds"], 2),
+        "is_mock": False,
     }

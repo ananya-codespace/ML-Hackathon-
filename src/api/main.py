@@ -10,6 +10,7 @@ from src.api.config import (
     LOG_LEVEL
 )
 
+from src.api.pipeline import load_artifacts
 from src.api.routes import router
 
 
@@ -34,12 +35,19 @@ app = FastAPI(
 app.include_router(router)
 
 
+# Load the model and HMM settings once, before the first request
+@app.on_event("startup")
+def startup():
+    load_artifacts()
+
+
 # Log incoming API requests
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
 
     logger.info(
-        "Incoming request: %s %s",
+        "Incoming request from %s: %s %s",
+        request.client.host if request.client else "unknown",
         request.method,
         request.url.path
     )
