@@ -67,7 +67,7 @@ if trips is None:
 
 elif not trips:
 
-    st.warning("No student-test trips are available.")
+    st.warning("No trips are available.")
 
 else:
 
@@ -77,7 +77,7 @@ else:
     )
 
     selected_trip = st.selectbox(
-        "Select a student-test trip",
+        "Select a trip",
         trips
     )
 
@@ -123,7 +123,7 @@ else:
 
                 col2.metric(
                     "Candidate rows",
-                    f"{result.get('candidate_rows', 0):,}"
+                    f"{result.get('candidate_count', result.get('candidate_rows', 0)):,}"
                 )
 
                 hmm_info = result.get("hmm_info") or {}
