@@ -19,6 +19,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier
 
 from .config import SEED
 
@@ -56,6 +57,7 @@ DEFAULTS = {
     "hist_gb": dict(learning_rate=0.1, max_iter=200, max_leaf_nodes=31, min_samples_leaf=20,
                     l2_regularization=0.0),
     "mlp": dict(hidden=64, hidden2=32, alpha=1e-4, learning_rate_init=1e-3, max_iter=100),
+    "decision_tree": dict(max_depth=12, min_samples_leaf=50),
 }
 
 
@@ -86,6 +88,9 @@ def build(name, params=None, imbalance="none"):
                                    learning_rate_init=p["learning_rate_init"], max_iter=int(p["max_iter"]),
                                    early_stopping=True, validation_fraction=0.1, n_iter_no_change=10,
                                    random_state=SEED), scale=True)
+    if name == "decision_tree":
+        return _pipe(DecisionTreeClassifier(max_depth=int(p["max_depth"]), min_samples_leaf=int(p["min_samples_leaf"]),
+                                            class_weight=cw, random_state=SEED), scale=False)
     raise KeyError(name)
 
 
@@ -109,8 +114,12 @@ INFO = {
     "mlp": dict(label="MLP (2 hidden layers)", family="Neural network",
                 objective="Binary log loss + L2 penalty (alpha), Adam optimiser, early stopping on a 10% validation split",
                 supports_imbalance=False, has_epoch_history=True),
+    "decision_tree": dict(label="Decision Tree", family="Single decision tree",
+                          objective="Gini impurity reduction per split (greedy); probability = leaf class frequency",
+                          supports_imbalance=True, has_epoch_history=False),
 }
-MODEL_ORDER = ["logreg", "gaussian_nb", "knn", "random_forest", "hist_gb", "mlp"]
+MODEL_ORDER = ["logreg", "gaussian_nb", "decision_tree", "random_forest", "hist_gb"]
+# Not run in the final comparison (too slow on 1.4M rows): "knn", "mlp"
 
 # ---------------------------------------------------------------- Bayesian-optimisation search spaces
 # type: float | logfloat | int | logint ; ranges are justified in README_B.md
