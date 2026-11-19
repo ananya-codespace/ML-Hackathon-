@@ -6,7 +6,8 @@ from . import config as C
 
 
 def log_loss_binary(y, p):
-    p = np.clip(p, C.EPS, 1 - C.EPS)
+    # float64 first: in float32, 1 - 1e-15 rounds to 1.0, so a fully confident p gives log(0) and NaN
+    p = np.clip(np.asarray(p, dtype=np.float64), C.EPS, 1 - C.EPS)
     return float(-(y * np.log(p) + (1 - y) * np.log(1 - p)).mean())
 
 

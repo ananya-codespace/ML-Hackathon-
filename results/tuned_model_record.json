@@ -121,7 +121,7 @@
   "cv_top1_mean": 0.835992623503851,
   "cv_top1_std": 0.04090498631202223,
   "cv_log_loss_mean": 0.11174825836050636,
-  "cv_fit_time_mean_s": 10.206452275000629
+  "cv_fit_time_mean_s": 9.982527233399741
  },
  "train": {
   "threshold": 0.44,
@@ -167,7 +167,7 @@
   "tn": 127715
  },
  "route_continuity_student_test_top1": 0.9248563968668407,
- "train_time_s": 11.633719625002414,
- "inference_time_s": 0.2792062089974934,
- "inference_us_per_row": 1.86204506287259
+ "train_time_s": 12.378809166002611,
+ "inference_time_s": 0.2849557500012452,
+ "inference_us_per_row": 1.9003891400987367
 }
